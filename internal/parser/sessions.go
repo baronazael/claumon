@@ -80,6 +80,7 @@ type jsonlLine struct {
 	SessionID string    `json:"sessionId"`
 	CWD       string    `json:"cwd"`
 	Message   *struct {
+		ID      string `json:"id"`
 		Model   string `json:"model"`
 		Role    string `json:"role"`
 		Content json.RawMessage `json:"content,omitempty"`
@@ -114,6 +115,7 @@ func ParseSessionFile(path string) (*SessionSummary, error) {
 	scanner := newSessionScanner(f)
 
 	var firstUserMsg string
+	var responses responseLog
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -156,10 +158,7 @@ func ParseSessionFile(path string) (*SessionSummary, error) {
 					summary.Model = entry.Message.Model
 				}
 				if u := entry.Message.Usage; u != nil {
-					summary.InputTokens += u.InputTokens
-					summary.OutputTokens += u.OutputTokens
-					summary.CacheReadTokens += u.CacheReadInputTokens
-					summary.CacheCreateTokens += u.CacheCreationInputTokens
+					responses.add(&entry)
 					summary.ContextLength = u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
 				}
 				if !summary.HasFileEdits && hasFileEditTool(entry.Message.Content) {
@@ -172,6 +171,13 @@ func ParseSessionFile(path string) (*SessionSummary, error) {
 				firstUserMsg = extractText(entry.Message.Content)
 			}
 		}
+	}
+
+	for _, r := range responses.entries {
+		summary.InputTokens += r.Input
+		summary.OutputTokens += r.Output
+		summary.CacheReadTokens += r.CacheRead
+		summary.CacheCreateTokens += r.CacheCreate
 	}
 
 	// Fallback title: first user message, stripped of XML tags, truncated
@@ -502,6 +508,7 @@ func ParseSessionFileDaily(path string) (map[string]*SessionAggregate, error) {
 	defer f.Close()
 
 	buckets := map[string]*SessionAggregate{}
+	var responses responseLog
 	getBucket := func(date string) *SessionAggregate {
 		b := buckets[date]
 		if b == nil {
@@ -531,23 +538,23 @@ func ParseSessionFileDaily(path string) (map[string]*SessionAggregate, error) {
 			if entry.Message == nil {
 				continue
 			}
-			b := getBucket(date)
-			b.MessageCount++
-			if u := entry.Message.Usage; u != nil {
-				b.InputTokens += u.InputTokens
-				b.OutputTokens += u.OutputTokens
-				b.CacheReadTokens += u.CacheReadInputTokens
-				b.CacheCreateTokens += u.CacheCreationInputTokens
-				b.CostUSD += costFor(entry.Message.Model,
-					u.InputTokens, u.OutputTokens,
-					u.CacheReadInputTokens, u.CacheCreationInputTokens)
-			}
+			getBucket(date).MessageCount++
+			responses.add(&entry)
 		case "user":
 			if entry.Message == nil {
 				continue
 			}
 			getBucket(date).MessageCount++
 		}
+	}
+
+	for _, r := range responses.entries {
+		b := getBucket(r.Time.Local().Format("2006-01-02"))
+		b.InputTokens += r.Input
+		b.OutputTokens += r.Output
+		b.CacheReadTokens += r.CacheRead
+		b.CacheCreateTokens += r.CacheCreate
+		b.CostUSD += costFor(r.Model, r.Input, r.Output, r.CacheRead, r.CacheCreate)
 	}
 
 	for date, b := range buckets {
@@ -571,6 +578,7 @@ func parseSessionFileHourly(path string) (map[string][24]int, error) {
 	defer f.Close()
 
 	buckets := map[string][24]int{}
+	var responses responseLog
 	scanner := newSessionScanner(f)
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -587,11 +595,13 @@ func parseSessionFileHourly(path string) (map[string][24]int, error) {
 		if entry.Timestamp.IsZero() {
 			continue
 		}
-		ts := entry.Timestamp.Local()
-		u := entry.Message.Usage
+		responses.add(&entry)
+	}
+	for _, r := range responses.entries {
+		ts := r.Time.Local()
 		date := ts.Format("2006-01-02")
 		hours := buckets[date]
-		hours[ts.Hour()] += u.InputTokens + u.OutputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+		hours[ts.Hour()] += r.Input + r.Output + r.CacheRead + r.CacheCreate
 		buckets[date] = hours
 	}
 	return buckets, nil
