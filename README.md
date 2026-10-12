@@ -1,3 +1,9 @@
+<h1 align="center">
+  <img src="assets/logo.png" alt="claumon" width="260">
+</h1>
+
+<div align="center">
+
 [![GitHub release](https://img.shields.io/github/v/release/fabioconcina/claumon?filter=!ext-*)](https://github.com/fabioconcina/claumon/releases/latest)
 [![Homebrew](https://img.shields.io/badge/brew_install-fabioconcina%2Fclaumon%2Fclaumon-orange?logo=homebrew&logoColor=white)](https://github.com/fabioconcina/homebrew-claumon)
 [![Go version](https://img.shields.io/github/go-mod/go-version/fabioconcina/claumon)](go.mod)
@@ -5,7 +11,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen)](https://github.com/fabioconcina/claumon/releases/latest)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
-# claumon
+</div>
 
 **See where your Claude Code limits are headed before you hit them - and manage everything Claude Code leaves on your machine.**
 

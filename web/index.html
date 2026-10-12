@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>claumon — Claude Code Dashboard</title>
-<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%238fbc8f'/></svg>">
+<link id="favicon" rel="icon" type="image/png" href="favicon.png">
 <style>
 :root {
   --bg: #1a1a1a;
@@ -50,7 +50,8 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
 }
 .topbar-left { display: flex; align-items: center; gap: 16px; }
-.topbar-left h1 { font-size: 16px; font-weight: 600; color: var(--text-bright); }
+.topbar-left h1 { font-size: 16px; font-weight: 600; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
+.topbar-logo { width: 28px; height: 28px; margin: -4px 0; }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--red);
@@ -937,7 +938,7 @@ tr.clickable { cursor: pointer; }
 
 <div class="topbar">
   <div class="topbar-left">
-    <h1>claumon</h1>
+    <h1><img class="topbar-logo" src="favicon.png" alt="">claumon</h1>
     <span id="app-version" style="font-size:11px;color:var(--text-dim);margin-left:6px"></span>
     <a id="update-badge" class="update-badge" target="_blank" rel="noopener" hidden></a>
     <span class="status-dot" id="statusDot" title="SSE disconnected"></span>
@@ -1303,10 +1304,30 @@ function updatePageTitle(sessionPct) {
   } else {
     document.title = 'claumon — Claude Code Dashboard';
   }
-  // Update favicon color to match usage level
-  const color = sessionPct >= 80 ? '%23d95f5f' : sessionPct >= 50 ? '%23e8c872' : '%238fbc8f';
-  document.getElementById('favicon').href =
-    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='" + color + "'/></svg>";
+  // Badge the favicon with a dot colored by usage level
+  drawFavicon(sessionPct >= 80 ? '#d95f5f' : sessionPct >= 50 ? '#e8c872' : '#8fbc8f');
+}
+
+const faviconImg = new Image();
+let faviconColor = null;
+faviconImg.onload = () => { if (faviconColor) drawFavicon(faviconColor); };
+faviconImg.src = 'favicon.png';
+
+function drawFavicon(color) {
+  faviconColor = color;
+  if (!faviconImg.complete || !faviconImg.naturalWidth) return; // onload redraws
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(faviconImg, 0, 0, 64, 64);
+  ctx.beginPath();
+  ctx.arc(51, 51, 11, 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.stroke();
+  document.getElementById('favicon').href = c.toDataURL('image/png');
 }
 
 function updateUsageGauges(data) {

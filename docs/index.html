@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>claumon - Claude Code Dashboard</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%23da7756'/></svg>">
+<link rel="icon" type="image/png" href="mascot.png">
+<link rel="apple-touch-icon" href="mascot.png">
 <meta name="description" content="See where your Claude Code limits are headed before you hit them - and manage everything Claude Code leaves on your machine. Calibrated usage forecasts, live rate-limit gauges, session costs, and a memory browser. Single binary, zero config.">
 <meta property="og:title" content="claumon - Claude Code Dashboard">
 <meta property="og:description" content="See where your Claude Code limits are headed before you hit them - and manage everything Claude Code leaves on your machine. Calibrated usage forecasts, live rate-limit gauges, session costs, and a memory browser. Single binary, zero config.">
 <meta property="og:image" content="https://raw.githubusercontent.com/fabioconcina/claumon/main/assets/overview.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%238fbc8f'/></svg>">
 <style>
 :root {
   --bg: #1a1a1a;
@@ -44,6 +44,10 @@ a:hover { text-decoration: underline; }
   padding: 80px 24px 48px;
   max-width: 800px;
   margin: 0 auto;
+}
+.hero-logo {
+  display: block;
+  margin: 0 auto 20px;
 }
 .hero-badge {
   display: inline-block;
@@ -359,6 +363,7 @@ footer a { color: var(--text); }
 }
 @media (max-width: 480px) {
   .hero h1 { font-size: 28px; }
+  .hero-logo { width: 120px; height: 120px; }
   .cta-group { flex-direction: column; align-items: center; }
 }
 </style>
@@ -367,6 +372,7 @@ footer a { color: var(--text); }
 
 <!-- Hero -->
 <section class="hero">
+  <img class="hero-logo" src="mascot.png" alt="" width="160" height="160">
   <div class="hero-badge">Open source &middot; MIT License</div>
   <h1><span>claumon</span></h1>
   <p>See where your Claude Code limits are headed before you hit them - and manage everything Claude Code leaves on your machine. Forecasts from a published, benchmarked statistical model, not a burn-rate guess. Single binary, zero config, one browser tab.</p>
