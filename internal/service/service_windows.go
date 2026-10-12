@@ -66,6 +66,12 @@ func Status() (string, error) {
 	}
 }
 
+// RestartCommand returns "": Homebrew doesn't run on Windows, and the
+// self-updater restarts the service itself.
+func RestartCommand() string {
+	return ""
+}
+
 func Restart() error {
 	killOtherInstances()
 	waitForPortFree(configuredPort(), 3*time.Second)

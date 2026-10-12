@@ -103,3 +103,16 @@ func Restart() error {
 	}
 	return nil
 }
+
+// RestartCommand returns a shell command that restarts the installed
+// systemd unit, or "" when the service isn't installed.
+func RestartCommand() string {
+	path, err := unitPath()
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return "systemctl --user restart " + linuxServiceName
+}

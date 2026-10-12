@@ -56,13 +56,24 @@ func CheckLatest() (*Release, error) {
 const BrewUpgradeCommand = "brew update && brew upgrade claumon"
 
 // UpdateCommand returns the command that upgrades the running install:
-// BrewUpgradeCommand when Homebrew manages the binary, "claumon update"
-// (the self-updater) otherwise.
-func UpdateCommand() string {
+// BrewCommand(restart) when Homebrew manages the binary, "claumon update"
+// (the self-updater, which restarts the service itself) otherwise. restart
+// is the command that restarts the background service, "" if none.
+func UpdateCommand(restart string) string {
 	if InstalledViaHomebrew() {
-		return BrewUpgradeCommand
+		return BrewCommand(restart)
 	}
 	return "claumon update"
+}
+
+// BrewCommand returns BrewUpgradeCommand followed by restart, if any. brew
+// leaves a running service on the old binary (and on macOS can leave it
+// stopped), so the upgrade only takes effect once the service restarts.
+func BrewCommand(restart string) string {
+	if restart == "" {
+		return BrewUpgradeCommand
+	}
+	return BrewUpgradeCommand + " && " + restart
 }
 
 // InstalledViaHomebrew reports whether the running binary lives in a

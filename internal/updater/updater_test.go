@@ -41,8 +41,23 @@ func TestIsHomebrewPath(t *testing.T) {
 
 func TestUpdateCommand(t *testing.T) {
 	// The test binary is never in a Homebrew Cellar.
-	if got := UpdateCommand(); got != "claumon update" {
+	if got := UpdateCommand("systemctl --user restart claumon"); got != "claumon update" {
 		t.Errorf("UpdateCommand() = %q, want %q", got, "claumon update")
+	}
+}
+
+func TestBrewCommand(t *testing.T) {
+	tests := []struct {
+		restart string
+		want    string
+	}{
+		{"", "brew update && brew upgrade claumon"},
+		{"systemctl --user restart claumon", "brew update && brew upgrade claumon && systemctl --user restart claumon"},
+	}
+	for _, tt := range tests {
+		if got := BrewCommand(tt.restart); got != tt.want {
+			t.Errorf("BrewCommand(%q) = %q, want %q", tt.restart, got, tt.want)
+		}
 	}
 }
 

@@ -154,7 +154,7 @@ func main() {
 	srv := server.New(cfg.ClaudeDir, st, webContent)
 	srv.Handlers.AuthProvider = provider
 	srv.Handlers.Version = version
-	srv.Handlers.UpdateCommand = updater.UpdateCommand()
+	srv.Handlers.UpdateCommand = updater.UpdateCommand(service.RestartCommand())
 	srv.Handlers.SubscriptionType = creds.SubscriptionType
 	srv.Handlers.RateLimitTier = creds.RateLimitTier
 	srv.Handlers.StuckThreshold = time.Duration(cfg.StuckThresholdMins) * time.Minute
@@ -704,7 +704,7 @@ func runUpdate() {
 
 	fmt.Printf("New version available: %s → %s\n", version, rel.TagName)
 	if updater.InstalledViaHomebrew() {
-		fmt.Fprintf(os.Stderr, "claumon was installed with Homebrew; update it with: %s\n", updater.BrewUpgradeCommand)
+		fmt.Fprintf(os.Stderr, "claumon was installed with Homebrew; update it with: %s\n", updater.BrewCommand(service.RestartCommand()))
 		os.Exit(1)
 	}
 	newVersion, err := updater.Update(rel)

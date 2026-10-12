@@ -143,6 +143,21 @@ func Restart() error {
 	return nil
 }
 
+// RestartCommand returns a shell command that restarts the installed
+// LaunchAgent, or "" when the service isn't installed. kickstart -k also
+// starts a loaded job that launchd left pending, which can happen when a
+// Homebrew upgrade swaps the binary under a running service.
+func RestartCommand() string {
+	path, err := plistPath()
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return "launchctl kickstart -k gui/$(id -u)/" + darwinLabel
+}
+
 // clearProvenance removes macOS quarantine/provenance attributes and re-signs
 // the binary so AppleSystemPolicy allows execution.
 func clearProvenance(path string) {
