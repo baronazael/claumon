@@ -1167,6 +1167,17 @@ function fmtNum(n) {
   if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
   return n.toString();
 }
+// Axis ticks drop the decimal at three digits ("911M", not "910.6M") so the
+// label fits the charts' left padding.
+function fmtAxis(n) {
+  for (const [div, unit] of [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']]) {
+    if (n >= div) {
+      const v = n / div;
+      return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + unit;
+    }
+  }
+  return n.toString();
+}
 function fmtCost(n) { return '$' + n.toFixed(1); }
 function fmtTimeAgo(ts) {
   const d = new Date(ts);
@@ -1447,7 +1458,7 @@ function renderBarChart(containerId, data, valueKey, colorFn) {
     const y = pad + (h - pad * 2) * (1 - i/4);
     const val = (maxVal * i / 4);
     svg += `<line x1="${pad}" y1="${y}" x2="${w-10}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
-    svg += `<text x="${pad-4}" y="${y+3}" class="bar-value" text-anchor="end">${fmtNum(Math.round(val))}</text>`;
+    svg += `<text x="${pad-4}" y="${y+3}" class="bar-value" text-anchor="end">${fmtAxis(Math.round(val))}</text>`;
   }
 
   data.forEach((d, i) => {
@@ -1648,7 +1659,7 @@ function renderBillableChart(containerId, data) {
   for (let i = 0; i <= 4; i++) {
     const y = pad + (h - pad * 2) * (1 - i/4);
     svg += `<line x1="${pad}" y1="${y}" x2="${w-10}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
-    svg += `<text x="${pad-4}" y="${y+3}" class="bar-value" text-anchor="end">${fmtNum(Math.round(maxVal * i / 4))}</text>`;
+    svg += `<text x="${pad-4}" y="${y+3}" class="bar-value" text-anchor="end">${fmtAxis(Math.round(maxVal * i / 4))}</text>`;
   }
 
   data.forEach((d, i) => {
