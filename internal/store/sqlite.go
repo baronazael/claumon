@@ -33,7 +33,11 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("creating db directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// busy_timeout makes a write wait for a concurrent writer instead of
+	// failing at once with SQLITE_BUSY (startup runs the backfill, the daily
+	// aggregate, the usage poll and the prune together). Set in the DSN so it
+	// applies to every pooled connection, not just the one a PRAGMA hits.
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}

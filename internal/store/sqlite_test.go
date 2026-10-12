@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -297,5 +298,41 @@ func TestPruneRespectsRetentionDays(t *testing.T) {
 	st.db.QueryRow("SELECT COUNT(*) FROM usage_snapshots").Scan(&count)
 	if count != 1 {
 		t.Errorf("expected 1 snapshot after prune(7), got %d", count)
+	}
+}
+
+// Startup runs the backfill, the daily aggregate, the usage poll and the
+// prune concurrently, so writes must wait for each other instead of failing
+// with SQLITE_BUSY.
+func TestConcurrentWritesWaitForLock(t *testing.T) {
+	st := openTestStore(t)
+
+	const writers, writes = 8, 25
+	errs := make(chan error, writers*writes)
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < writes; i++ {
+				agg := DailyAggregate{Date: fmt.Sprintf("2026-03-%02d", w+1), InputTokens: i}
+				if err := st.UpsertDailyAggregate(agg); err != nil {
+					errs <- err
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+
+	failed := 0
+	for err := range errs {
+		if failed == 0 {
+			t.Errorf("concurrent upsert: %v", err)
+		}
+		failed++
+	}
+	if failed > 0 {
+		t.Errorf("%d of %d concurrent writes failed", failed, writers*writes)
 	}
 }
