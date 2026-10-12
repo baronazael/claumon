@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 - 2026-10-12
+
+### Changed
+
+- **New icon: the claumon mascot.** It replaces the green ring in the
+  Extensions view and on the Marketplace, and the **Claumon Dashboard**
+  editor tab now shows it too (the tab had no icon before).
+
 ## 0.4.0 - 2026-07-21
 
 ### Added

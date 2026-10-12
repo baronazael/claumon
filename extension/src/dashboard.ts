@@ -10,13 +10,13 @@ export class Dashboard {
   private readonly panel: vscode.WebviewPanel;
   private disposed = false;
 
-  static show(): void {
+  static show(extensionUri: vscode.Uri): void {
     if (Dashboard.current) {
       Dashboard.current.panel.reveal();
       void Dashboard.current.update();
       return;
     }
-    Dashboard.current = new Dashboard();
+    Dashboard.current = new Dashboard(extensionUri);
   }
 
   /** Refresh the open panel, if any (e.g. after a config change). */
@@ -26,13 +26,14 @@ export class Dashboard {
     }
   }
 
-  private constructor() {
+  private constructor(extensionUri: vscode.Uri) {
     this.panel = vscode.window.createWebviewPanel(
       "claumonDashboard",
       "Claumon Dashboard",
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true },
     );
+    this.panel.iconPath = vscode.Uri.joinPath(extensionUri, "icon.png");
     this.panel.onDidDispose(() => {
       this.disposed = true;
       Dashboard.current = undefined;

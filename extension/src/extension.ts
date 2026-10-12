@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
     });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("claumon.openDashboard", () => Dashboard.show()),
+    vscode.commands.registerCommand("claumon.openDashboard", () => Dashboard.show(context.extensionUri)),
     vscode.commands.registerCommand("claumon.reconnect", () => {
       sse?.restart();
       void getUsage()
