@@ -1,23 +1,18 @@
-## New claumon logo; clearer update notice
+## Forecast and live status show up right after startup
 
-- **The dashboard has a logo.** The claumon mascot now sits next to the name
-  in the top bar, and the browser tab icon is the mascot instead of a plain
-  colored circle.
+- **The forecast no longer goes missing after a restart.** At startup claumon
+  fits the forecast model to your usage history, which takes several seconds
+  on a long history. When the first usage check finished before the fit, the
+  dashboard showed no forecast until the next check, up to two minutes later.
+  The forecast now appears as soon as the fit is done, without an extra
+  request to the usage API.
 
-- **The tab icon still shows session usage.** A dot in the corner of the
-  mascot turns green, yellow or red as session usage crosses 50% and 80%,
-  just like the old circle did.
+- **"Connected" right away.** After every page load the dashboard showed a
+  red dot and "Connecting..." for up to 30 seconds, until the first live
+  update arrived. It now connects immediately.
 
-- **The update badge tells you how to update.** It used to be a link to the
-  GitHub release page, which did nothing inside the VS Code panel and looked
-  like a one-click update. It now reads `vX.Y.Z available`, and hovering it
-  shows the command for your install: `claumon update`, or
-  `brew update && brew upgrade claumon` for Homebrew installs.
+- **Chart axis labels fit.** Daily Tokens axis labels in the hundreds of
+  millions were cut off ("910.6M" showed as ")10.6M"). Axis ticks now drop
+  the decimal at that size ("911M").
 
-- **`claumon update` no longer overwrites Homebrew installs.** It used to
-  replace the binary inside Homebrew's Cellar, leaving Homebrew convinced the
-  old version was still installed. It now detects a Homebrew install and
-  tells you to run `brew update && brew upgrade claumon` instead.
-
-- **README and website.** The README header and the claumon website use the
-  new logo too.
+- **New screenshots** in the README and on the website.
