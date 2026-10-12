@@ -1,18 +1,31 @@
-## Forecast and live status show up right after startup
+## Token and cost totals were counted about twice
 
-- **The forecast no longer goes missing after a restart.** At startup claumon
-  fits the forecast model to your usage history, which takes several seconds
-  on a long history. When the first usage check finished before the fit, the
-  dashboard showed no forecast until the next check, up to two minutes later.
-  The forecast now appears as soon as the fit is done, without an extra
-  request to the usage API.
+- **Fixed: tokens and costs were overcounted.** Claude Code logs each part
+  of a response (thinking, text, each tool call) as its own line, and every
+  line repeats the usage for the whole response. claumon added up every
+  line, so token counts and estimated costs were about 2x too high. Each
+  response is now counted once. This affected the sessions table, Today,
+  History and the hourly heatmap since the first release. Thanks to
+  @baronazael for finding and fixing it (#2).
 
-- **"Connected" right away.** After every page load the dashboard showed a
-  red dot and "Connecting..." for up to 30 seconds, until the first live
-  update arrived. It now connects immediately.
+- **Rate-limit gauges and forecasts were never affected.** They come from
+  Anthropic's usage API, not from session logs.
 
-- **Chart axis labels fit.** Daily Tokens axis labels in the hundreds of
-  millions were cut off ("910.6M" showed as ")10.6M"). Axis ticks now drop
-  the decimal at that size ("911M").
+- **What you'll see after updating:** token and cost numbers drop by about
+  half. At startup claumon rebuilds daily history for every day whose
+  session files are still on disk. Older days stay overcounted until they
+  age out of the retention window, so the History chart may show a drop
+  where your oldest session files begin.
 
-- **New screenshots** in the README and on the website.
+- **History no longer skips days after a restart.** The startup rebuild ran
+  alongside other startup work that also writes to claumon's database, and
+  some days could fail with "database is locked" and keep stale numbers.
+  Writes now wait for each other, so every day gets rebuilt.
+
+- **Homebrew updates now restart claumon.** If you run claumon as a
+  background service, the update command in the dashboard now restarts it
+  after `brew upgrade`. Before, the service kept running the old version,
+  and on macOS it could end up stopped. For this update, restart it
+  yourself if claumon doesn't come back:
+  `launchctl kickstart -k gui/$(id -u)/com.claumon.dashboard` (macOS) or
+  `systemctl --user restart claumon` (Linux).
