@@ -97,6 +97,15 @@ func (h *Handlers) SetLatestUsage(data map[string]interface{}) {
 	h.usageMu.Unlock()
 }
 
+// ReplaceLatestUsage swaps the cached usage payload without counting as a
+// poll: last_poll_at and any poll error are left alone. Used to re-attach a
+// forecast computed after the fact.
+func (h *Handlers) ReplaceLatestUsage(data map[string]interface{}) {
+	h.usageMu.Lock()
+	h.latestUsage = data
+	h.usageMu.Unlock()
+}
+
 func (h *Handlers) SetPollError(errMsg string) {
 	h.usageMu.Lock()
 	h.lastPollError = errMsg

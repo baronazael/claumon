@@ -112,6 +112,35 @@ func TestHandleUsageWithData(t *testing.T) {
 	}
 }
 
+// Re-attaching a forecast after the startup refit must update what
+// /api/forecast serves without counting as a poll.
+func TestReplaceLatestUsageIsNotAPoll(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	srv.Handlers.SetPollError("boom")
+	srv.Handlers.ReplaceLatestUsage(map[string]interface{}{
+		"session_pct": 20.0,
+		"forecast":    map[string]interface{}{"session": map[string]interface{}{}},
+	})
+
+	get := func(path string) map[string]interface{} {
+		w := httptest.NewRecorder()
+		srv.Mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		var result map[string]interface{}
+		json.NewDecoder(w.Body).Decode(&result)
+		return result
+	}
+	if fc := get("/api/forecast"); fc["available"] != true {
+		t.Errorf("forecast available = %v, want true", fc["available"])
+	}
+	usage := get("/api/usage")
+	if _, ok := usage["last_poll_at"]; ok {
+		t.Errorf("last_poll_at = %v, want absent (no poll happened)", usage["last_poll_at"])
+	}
+	if usage["poll_error"] != "boom" {
+		t.Errorf("poll_error = %v, want %q kept", usage["poll_error"], "boom")
+	}
+}
+
 // At 100% usage there's no headroom to simulate, so the sample endpoint must
 // report available=false with reason "at_limit" — letting the modal show a
 // meaningful "limit reached" message instead of a blank/"no forecast" state.

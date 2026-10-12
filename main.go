@@ -162,10 +162,16 @@ func main() {
 	// Forecast service: prior + calibration cached, refit daily. The fit only
 	// reads completed past sessions, so we can kick it off immediately; on a
 	// fresh DB it's a no-op and the first poll's forecast will simply be
-	// suppressed until history accumulates.
+	// suppressed until history accumulates. On a large DB the fit takes long
+	// enough that the first poll can beat it, so fcReady tells the poller to
+	// re-attach the forecast instead of waiting a full interval.
 	fcSvc := forecast.NewService(&storeAdapter{st: st}, forecast.DefaultConfig())
 	srv.Handlers.Forecast = fcSvc
-	go fcSvc.RefitAll(time.Now())
+	fcReady := make(chan struct{})
+	go func() {
+		fcSvc.RefitAll(time.Now())
+		close(fcReady)
+	}()
 
 	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -177,7 +183,7 @@ func main() {
 	// Start usage poller (provider handles credential reload on expiry)
 	if provider.HasToken() {
 		apiClient := api.NewClient(provider)
-		go pollUsage(ctx, apiClient, provider, st, srv.Broker, srv.Handlers, fcSvc, time.Duration(cfg.PollIntervalSecs)*time.Second)
+		go pollUsage(ctx, apiClient, provider, st, srv.Broker, srv.Handlers, fcSvc, fcReady, time.Duration(cfg.PollIntervalSecs)*time.Second)
 	}
 
 	// Start file watcher
@@ -341,7 +347,7 @@ func checkUpdates(ctx context.Context, current string, handlers *server.Handlers
 	}
 }
 
-func pollUsage(ctx context.Context, client *api.Client, provider *auth.Provider, st *store.Store, broker *server.SSEBroker, handlers *server.Handlers, fcSvc *forecast.Service, interval time.Duration) {
+func pollUsage(ctx context.Context, client *api.Client, provider *auth.Provider, st *store.Store, broker *server.SSEBroker, handlers *server.Handlers, fcSvc *forecast.Service, fcReady <-chan struct{}, interval time.Duration) {
 	// Resume the poll cadence across restarts rather than always polling a few
 	// seconds after start. The poller's backoff is in-memory only, so without
 	// this a burst of restarts each fires an immediate poll and trips the usage
@@ -370,12 +376,17 @@ func pollUsage(ctx context.Context, client *api.Client, provider *auth.Provider,
 	}
 
 	p.fetch(ctx)
+	next := time.After(p.backoff)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(p.backoff):
+		case <-fcReady:
+			fcReady = nil // fires once; a nil channel blocks forever
+			p.refreshForecast()
+		case <-next:
 			p.fetch(ctx)
+			next = time.After(p.backoff)
 		}
 	}
 }
@@ -391,6 +402,25 @@ type poller struct {
 	backoff     time.Duration
 	lastAuthOK  bool
 	authWaiting bool
+	lastUsage   *api.UsageResponse // last successful fetch, for refreshForecast
+}
+
+// refreshForecast re-attaches forecasts to the last fetched usage once the
+// startup refit has finished, so a first poll that beat the refit doesn't
+// leave the dashboard without a forecast until the next interval. If that
+// poll already carried one, this just recomputes it. No API call.
+func (p *poller) refreshForecast() {
+	if p.lastUsage == nil {
+		return
+	}
+	evt := buildUsageEvent(p.lastUsage)
+	attachForecasts(evt, p.lastUsage, p.forecast)
+	if _, ok := evt["forecast"]; !ok {
+		return
+	}
+	p.broker.SendJSON("usage", evt)
+	p.handlers.ReplaceLatestUsage(evt)
+	log.Printf("[forecast] attached to the latest usage after the startup refit")
 }
 
 const authWaitBackoff = 30 * time.Second
@@ -424,9 +454,10 @@ func (p *poller) fetch(ctx context.Context) {
 		p.authWaiting = false
 	}
 
-	err := fetchAndBroadcastUsage(ctx, p.client, p.st, p.broker, p.handlers, p.forecast)
+	usage, err := fetchAndBroadcastUsage(ctx, p.client, p.st, p.broker, p.handlers, p.forecast)
 	p.lastAuthOK = broadcastAuthStatus(p.provider, p.broker, p.lastAuthOK)
 	if err == nil {
+		p.lastUsage = usage
 		p.backoff = p.interval
 		p.authWaiting = false
 		return
@@ -475,11 +506,11 @@ func retryBackoff(err error, defaultBackoff time.Duration) time.Duration {
 	return defaultBackoff
 }
 
-func fetchAndBroadcastUsage(ctx context.Context, client *api.Client, st *store.Store, broker *server.SSEBroker, handlers *server.Handlers, fcSvc *forecast.Service) error {
+func fetchAndBroadcastUsage(ctx context.Context, client *api.Client, st *store.Store, broker *server.SSEBroker, handlers *server.Handlers, fcSvc *forecast.Service) (*api.UsageResponse, error) {
 	usage, err := client.FetchUsage(ctx)
 	if err != nil {
 		log.Printf("[poll] Usage fetch error: %v", err)
-		return err
+		return nil, err
 	}
 
 	// Save snapshot
@@ -493,7 +524,7 @@ func fetchAndBroadcastUsage(ctx context.Context, client *api.Client, st *store.S
 	broker.SendJSON("usage", evt)
 	handlers.SetLatestUsage(evt)
 	log.Printf("[poll] Usage: session=%.1f%% weekly=%.1f%%", usage.SessionPercent, usage.WeeklyPercent)
-	return nil
+	return usage, nil
 }
 
 // attachForecasts runs the forecast service against the current usage payload
