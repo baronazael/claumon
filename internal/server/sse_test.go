@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -85,5 +87,26 @@ func TestBrokerBroadcastToMultipleClients(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("timeout waiting for event")
 		}
+	}
+}
+
+func TestServeHTTPSendsHeadersBeforeFirstEvent(t *testing.T) {
+	broker := NewBroker()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go broker.Run(ctx)
+
+	srv := httptest.NewServer(broker)
+	defer srv.Close()
+
+	// No event is ever sent: the response headers alone must arrive promptly.
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("headers did not arrive before any event: %v", err)
+	}
+	defer resp.Body.Close()
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
 	}
 }

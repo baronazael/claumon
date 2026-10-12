@@ -123,6 +123,11 @@ func (b *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b.unregister <- ch
 	}()
 
+	// Send headers now: EventSource only fires "open" once they arrive, so
+	// without this the page shows "Connecting..." until the first event
+	// (up to the 30s ping).
+	flusher.Flush()
+
 	ctx := r.Context()
 	for {
 		select {
