@@ -154,7 +154,7 @@ func main() {
 	srv := server.New(cfg.ClaudeDir, st, webContent)
 	srv.Handlers.AuthProvider = provider
 	srv.Handlers.Version = version
-	srv.Handlers.ReleasesURL = updater.ReleasesURL()
+	srv.Handlers.UpdateCommand = updater.UpdateCommand()
 	srv.Handlers.SubscriptionType = creds.SubscriptionType
 	srv.Handlers.RateLimitTier = creds.RateLimitTier
 	srv.Handlers.StuckThreshold = time.Duration(cfg.StuckThresholdMins) * time.Minute
@@ -316,7 +316,7 @@ func checkUpdates(ctx context.Context, current string, handlers *server.Handlers
 		broker.SendJSON("update_available", map[string]string{
 			"latest":  rel.TagName,
 			"current": current,
-			"url":     updater.ReleasesURL(),
+			"command": handlers.UpdateCommand,
 		})
 		log.Printf("[update] newer version available: %s (current %s)", rel.TagName, current)
 	}
@@ -672,6 +672,10 @@ func runUpdate() {
 	}
 
 	fmt.Printf("New version available: %s → %s\n", version, rel.TagName)
+	if updater.InstalledViaHomebrew() {
+		fmt.Fprintf(os.Stderr, "claumon was installed with Homebrew; update it with: %s\n", updater.BrewUpgradeCommand)
+		os.Exit(1)
+	}
 	newVersion, err := updater.Update(rel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)

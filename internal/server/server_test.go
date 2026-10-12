@@ -48,6 +48,8 @@ func TestHandleInfo(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	srv.Handlers.SubscriptionType = "pro"
 	srv.Handlers.RateLimitTier = "tier1"
+	srv.Handlers.UpdateCommand = "brew update && brew upgrade claumon"
+	srv.Handlers.SetUpdateStatus("v9.9.9", true)
 
 	req := httptest.NewRequest("GET", "/api/info", nil)
 	w := httptest.NewRecorder()
@@ -65,6 +67,12 @@ func TestHandleInfo(t *testing.T) {
 	}
 	if result["is_api_billing"] != false {
 		t.Errorf("is_api_billing = %v, want false", result["is_api_billing"])
+	}
+	if result["update_available"] != true || result["latest_version"] != "v9.9.9" {
+		t.Errorf("update_available/latest_version = %v/%v, want true/v9.9.9", result["update_available"], result["latest_version"])
+	}
+	if result["update_command"] != "brew update && brew upgrade claumon" {
+		t.Errorf("update_command = %v, want %q", result["update_command"], "brew update && brew upgrade claumon")
 	}
 }
 

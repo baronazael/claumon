@@ -19,6 +19,33 @@ func TestAssetName(t *testing.T) {
 	}
 }
 
+func TestIsHomebrewPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/opt/homebrew/Cellar/claumon/0.21.0/bin/claumon", true},
+		{"/usr/local/Cellar/claumon/0.21.0/bin/claumon", true},
+		{"/home/linuxbrew/.linuxbrew/Cellar/claumon/0.21.0/bin/claumon", true},
+		{"/usr/local/bin/claumon", false},
+		{"/home/me/.local/bin/claumon", false},
+		{"/opt/homebrew/Cellar/other/1.0/bin/claumon", false},
+		{`C:\Users\me\bin\claumon.exe`, false},
+	}
+	for _, tt := range tests {
+		if got := isHomebrewPath(tt.path); got != tt.want {
+			t.Errorf("isHomebrewPath(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestUpdateCommand(t *testing.T) {
+	// The test binary is never in a Homebrew Cellar.
+	if got := UpdateCommand(); got != "claumon update" {
+		t.Errorf("UpdateCommand() = %q, want %q", got, "claumon update")
+	}
+}
+
 func TestNeedsUpdate(t *testing.T) {
 	tests := []struct {
 		current, latest string

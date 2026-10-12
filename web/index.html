@@ -63,10 +63,10 @@ a:hover { text-decoration: underline; }
   font-size: 11px; font-weight: 600;
   padding: 2px 8px; border-radius: 10px;
   background: var(--accent); color: var(--bg);
-  text-decoration: none; line-height: 1.4;
+  line-height: 1.4;
   white-space: nowrap;
+  cursor: help;
 }
-.update-badge:hover { filter: brightness(1.1); }
 .topbar-right { font-size: 12px; color: var(--text-dim); }
 
 /* Tabs */
@@ -940,7 +940,7 @@ tr.clickable { cursor: pointer; }
   <div class="topbar-left">
     <h1><img class="topbar-logo" src="favicon.png" alt="">claumon</h1>
     <span id="app-version" style="font-size:11px;color:var(--text-dim);margin-left:6px"></span>
-    <a id="update-badge" class="update-badge" target="_blank" rel="noopener" hidden></a>
+    <span id="update-badge" class="update-badge" hidden></span>
     <span class="status-dot" id="statusDot" title="SSE disconnected"></span>
     <span style="font-size:12px;color:var(--text-dim)" id="connStatus">Connecting...</span>
   </div>
@@ -3018,20 +3018,21 @@ function connectSSE() {
 
   es.addEventListener('update_available', e => {
     const d = JSON.parse(e.data);
-    showUpdateBadge(d.latest, d.url);
+    showUpdateBadge(d.latest, d.command);
   });
 }
 
 // --- Update badge ---
+// Informational only: a link to the release page did nothing inside the VS
+// Code panel and read as a one-click update, so the tooltip gives the command.
 let currentVersion = '';
-function showUpdateBadge(latest, url) {
+function showUpdateBadge(latest, command) {
   if (!latest) return;
   const badge = document.getElementById('update-badge');
-  badge.textContent = '↑ ' + latest;
-  if (url) badge.href = url;
-  badge.title = currentVersion
+  badge.textContent = latest + ' available';
+  badge.title = (currentVersion
     ? `Update available: ${currentVersion} → ${latest}`
-    : `Update available: ${latest}`;
+    : `Update available: ${latest}`) + (command ? `\nUpdate with: ${command}` : '');
   badge.hidden = false;
   badge.style.display = 'inline-block'; // override the class's default display:none
 }
@@ -3043,7 +3044,7 @@ fetch('/api/info').then(r => r.json()).then(info => {
     document.getElementById('app-version').textContent = info.version;
   }
   if (info.update_available) {
-    showUpdateBadge(info.latest_version, info.releases_url);
+    showUpdateBadge(info.latest_version, info.update_command);
   }
   if (info.is_api_billing) {
     document.querySelector('#card-cost').parentElement.querySelector('.card-label').textContent = 'Estimated Cost';

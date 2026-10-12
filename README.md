@@ -182,6 +182,10 @@ claumon update
 
 Checks GitHub releases for a newer version, downloads the right binary for your platform, and replaces the current one. If a background service is installed, it restarts automatically after the update.
 
+Installed with Homebrew? Use `brew update && brew upgrade claumon` instead: `claumon update` detects a Homebrew install and points you there rather than replacing a file Homebrew manages.
+
+When a newer release is out, the dashboard shows a `vX.Y.Z available` badge next to the version; hover it for the update command that fits your install.
+
 ### Verify a release
 
 Every release includes SHA-256 checksums, per-binary SPDX software bills of

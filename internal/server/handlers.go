@@ -31,7 +31,7 @@ type Handlers struct {
 	StuckThreshold   time.Duration
 	Forecast         *forecast.Service
 
-	ReleasesURL     string
+	UpdateCommand   string
 	updateMu        sync.RWMutex
 	latestVersion   string
 	updateAvailable bool
@@ -364,7 +364,7 @@ func (h *Handlers) HandleInfo(w http.ResponseWriter, r *http.Request) {
 		"is_api_billing":    isAPI,
 		"update_available":  available,
 		"latest_version":    latest,
-		"releases_url":      h.ReleasesURL,
+		"update_command":    h.UpdateCommand,
 	}
 	if h.AuthProvider != nil {
 		status, msg := h.AuthProvider.Status()

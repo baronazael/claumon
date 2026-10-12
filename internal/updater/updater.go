@@ -50,9 +50,39 @@ func CheckLatest() (*Release, error) {
 	return &rel, nil
 }
 
-// ReleasesURL returns the GitHub "latest release" page for claumon.
-func ReleasesURL() string {
-	return fmt.Sprintf("https://github.com/%s/%s/releases/latest", repoOwner, repoName)
+// BrewUpgradeCommand upgrades a Homebrew formula install. The explicit
+// "brew update" matters: Homebrew only auto-refreshes taps about once a day,
+// so a bare upgrade right after a release can report "already up-to-date".
+const BrewUpgradeCommand = "brew update && brew upgrade claumon"
+
+// UpdateCommand returns the command that upgrades the running install:
+// BrewUpgradeCommand when Homebrew manages the binary, "claumon update"
+// (the self-updater) otherwise.
+func UpdateCommand() string {
+	if InstalledViaHomebrew() {
+		return BrewUpgradeCommand
+	}
+	return "claumon update"
+}
+
+// InstalledViaHomebrew reports whether the running binary lives in a
+// Homebrew Cellar keg. Self-updating such a binary would swap the file
+// under Homebrew, which keeps believing the old version is installed.
+func InstalledViaHomebrew() bool {
+	execPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+		execPath = resolved
+	}
+	return isHomebrewPath(execPath)
+}
+
+// isHomebrewPath matches <prefix>/Cellar/claumon/<version>/bin/claumon for
+// any Homebrew prefix (/opt/homebrew, /usr/local, /home/linuxbrew/.linuxbrew).
+func isHomebrewPath(execPath string) bool {
+	return strings.Contains(filepath.ToSlash(execPath), "/Cellar/"+repoName+"/")
 }
 
 // AssetName returns the expected binary name for the current platform.
