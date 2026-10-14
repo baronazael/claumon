@@ -54,16 +54,16 @@ func parseSessionFileCostEvents(path string) ([]CostEvent, error) {
 	return events, nil
 }
 
-// CostEventsSince returns, keyed by session ID, the cost events at or after
-// since. Files last modified before since are skipped without parsing.
-func CostEventsSince(claudeDir string, since time.Time) (map[string][]CostEvent, error) {
+// CostEventsBetween returns, keyed by session ID, the cost events in
+// [from, to]. Files last modified before from are skipped without parsing.
+func CostEventsBetween(claudeDir string, from, to time.Time) (map[string][]CostEvent, error) {
 	files, err := enumerateSessionFiles(claudeDir)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string][]CostEvent{}
 	for _, f := range files {
-		if f.modTime.Before(since) {
+		if f.modTime.Before(from) {
 			continue
 		}
 		events, err := costEventCache.get(f, parseSessionFileCostEvents)
@@ -72,10 +72,19 @@ func CostEventsSince(claudeDir string, since time.Time) (map[string][]CostEvent,
 		}
 		id := strings.TrimSuffix(filepath.Base(f.path), ".jsonl")
 		for _, e := range events {
-			if !e.Time.Before(since) {
+			if !e.Time.Before(from) && !e.Time.After(to) {
 				out[id] = append(out[id], e)
 			}
 		}
 	}
 	return out, nil
+}
+
+// SessionCostEvents returns the cost events of one session file.
+func SessionCostEvents(path string) ([]CostEvent, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return costEventCache.get(sessionFile{path: path, modTime: info.ModTime(), size: info.Size()}, parseSessionFileCostEvents)
 }

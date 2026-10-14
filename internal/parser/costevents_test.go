@@ -41,7 +41,7 @@ func TestParseSessionFileCostEventsDedupesByMessageID(t *testing.T) {
 	}
 }
 
-func TestCostEventsSince(t *testing.T) {
+func TestCostEventsBetween(t *testing.T) {
 	claudeDir := t.TempDir()
 	proj := filepath.Join(claudeDir, "projects", "-tmp-proj")
 	if err := os.MkdirAll(proj, 0755); err != nil {
@@ -50,6 +50,7 @@ func TestCostEventsSince(t *testing.T) {
 
 	content := `{"type":"assistant","timestamp":"2026-03-20T09:00:00Z","message":{"id":"m1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":1}}}
 {"type":"assistant","timestamp":"2026-03-20T11:00:00Z","message":{"id":"m2","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":1}}}
+{"type":"assistant","timestamp":"2026-03-20T13:00:00Z","message":{"id":"m3","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":1}}}
 `
 	if err := os.WriteFile(filepath.Join(proj, "sess-a.jsonl"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -63,14 +64,14 @@ func TestCostEventsSince(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := CostEventsSince(claudeDir, time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC))
+	got, err := CostEventsBetween(claudeDir, time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC), time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got["sess-a"]) != 1 {
-		t.Errorf("sess-a events = %d, want 1 (only the one after since)", len(got["sess-a"]))
+		t.Errorf("sess-a events = %d, want 1 (only the one inside the range)", len(got["sess-a"]))
 	}
 	if _, ok := got["sess-old"]; ok {
-		t.Error("file last modified before since should be skipped")
+		t.Error("file last modified before from should be skipped")
 	}
 }

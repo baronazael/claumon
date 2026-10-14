@@ -26,7 +26,6 @@ func TestAttribute(t *testing.T) {
 		eventsFrom   time.Time
 		want         map[string]float64
 		unattributed float64
-		from         time.Time
 	}{
 		{
 			name: "initial window split by cost",
@@ -39,7 +38,6 @@ func TestAttribute(t *testing.T) {
 			},
 			eventsFrom: t0.Add(-time.Hour),
 			want:       map[string]float64{"a": 7.5, "b": 2.5},
-			from:       t0.Add(-windowStartSlack),
 		},
 		{
 			name: "zero-delta polls accumulate into the next increase",
@@ -54,7 +52,6 @@ func TestAttribute(t *testing.T) {
 			},
 			eventsFrom: t0.Add(-time.Hour),
 			want:       map[string]float64{"a": 0.5, "b": 0.5},
-			from:       t0.Add(-windowStartSlack),
 		},
 		{
 			name: "increase with no local events is unattributed",
@@ -68,7 +65,6 @@ func TestAttribute(t *testing.T) {
 			eventsFrom:   t0.Add(-time.Hour),
 			want:         map[string]float64{"a": 2},
 			unattributed: 3,
-			from:         t0.Add(-windowStartSlack),
 		},
 		{
 			name: "window start before event coverage discards the first partial segment",
@@ -84,7 +80,6 @@ func TestAttribute(t *testing.T) {
 			},
 			eventsFrom: at(30),
 			want:       map[string]float64{"a": 2},
-			from:       at(64),
 		},
 		{
 			name: "rollover attributes the new window only to events after its start",
@@ -99,7 +94,6 @@ func TestAttribute(t *testing.T) {
 			},
 			eventsFrom: t0.Add(-time.Hour),
 			want:       map[string]float64{"a": 50, "b": 4},
-			from:       t0.Add(-windowStartSlack),
 		},
 		{
 			name: "reset drift within tolerance stays in the same window",
@@ -113,7 +107,6 @@ func TestAttribute(t *testing.T) {
 			},
 			eventsFrom: t0.Add(-time.Hour),
 			want:       map[string]float64{"a": 2, "b": 1},
-			from:       t0.Add(-windowStartSlack),
 		},
 		{
 			name: "window ends, then a new one starts after an idle gap",
@@ -129,7 +122,6 @@ func TestAttribute(t *testing.T) {
 			},
 			eventsFrom: t0.Add(-time.Hour),
 			want:       map[string]float64{"a": 2, "b": 3},
-			from:       t0.Add(-windowStartSlack),
 		},
 		{
 			name:       "no snapshots",
@@ -152,9 +144,6 @@ func TestAttribute(t *testing.T) {
 			if !approx(got.Unattributed, tt.unattributed) {
 				t.Errorf("Unattributed = %v, want %v", got.Unattributed, tt.unattributed)
 			}
-			if !got.From.Equal(tt.from) {
-				t.Errorf("From = %v, want %v", got.From, tt.from)
-			}
 		})
 	}
 }
@@ -172,5 +161,82 @@ func TestAttributeIgnoresEventOrder(t *testing.T) {
 	}
 	if events[0].Session != "b" {
 		t.Error("Attribute must not reorder the caller's slice")
+	}
+}
+
+func TestShare(t *testing.T) {
+	reset := t0.Add(window)
+	snaps := []Snapshot{
+		{Time: at(10), Pct: 2, ResetAt: reset},
+		{Time: at(20), Pct: 4, ResetAt: reset},
+	}
+	events := []Event{
+		{Session: "a", Time: at(5), Cost: 1},
+		{Session: "a", Time: at(15), Cost: 1},
+		{Session: "b", Time: at(25), Cost: 1},
+	}
+	res := Attribute(snaps, events, window, t0.Add(-time.Hour))
+
+	if got, ok := res.Share("a", []time.Time{at(5), at(15)}); !ok || !approx(got, 4) {
+		t.Errorf("Share(a) = %v, %v, want 4, true", got, ok)
+	}
+	// b's only event came after the last poll: not reflected in the gauge yet.
+	if _, ok := res.Share("b", []time.Time{at(25)}); ok {
+		t.Error("Share(b) should have no estimate before a poll reflects it")
+	}
+	// A session that ran before the window claumon saw has no estimate.
+	if _, ok := res.Share("c", []time.Time{t0.Add(-2 * time.Hour)}); ok {
+		t.Error("Share(c) should have no estimate outside the covered spans")
+	}
+}
+
+func TestShareMissedWindow(t *testing.T) {
+	// claumon polled window 1, missed window 2 entirely (polling backed off),
+	// and polled again in window 3.
+	reset1 := t0.Add(window)
+	start3 := t0.Add(2*window + time.Hour)
+	snaps := []Snapshot{
+		{Time: at(60), Pct: 5, ResetAt: reset1},
+		{Time: start3.Add(30 * time.Minute), Pct: 3, ResetAt: start3.Add(window)},
+	}
+	events := []Event{
+		{Session: "w1", Time: at(30), Cost: 1},
+		{Session: "missed", Time: reset1.Add(time.Hour), Cost: 1},
+		{Session: "w3", Time: start3.Add(10 * time.Minute), Cost: 1},
+	}
+	res := Attribute(snaps, events, window, t0.Add(-time.Hour))
+
+	if _, ok := res.Share("missed", []time.Time{reset1.Add(time.Hour)}); ok {
+		t.Error("session active only in the missed window should have no estimate, not 0%")
+	}
+	// A session spanning the gap is undercounted, so it gets no estimate either.
+	if _, ok := res.Share("w1", []time.Time{at(30), reset1.Add(time.Hour)}); ok {
+		t.Error("session with activity in the missed window should have no estimate")
+	}
+	if got, ok := res.Share("w1", []time.Time{at(30)}); !ok || !approx(got, 5) {
+		t.Errorf("Share(w1) = %v, %v, want 5, true", got, ok)
+	}
+	if got, ok := res.Share("w3", []time.Time{start3.Add(10 * time.Minute)}); !ok || !approx(got, 3) {
+		t.Errorf("Share(w3) = %v, %v, want 3, true", got, ok)
+	}
+}
+
+func TestShareAcrossRegularRollover(t *testing.T) {
+	// Polls a minute apart across a window change: the unpolled minute at the
+	// end of the first window doesn't cost a long session its estimate.
+	reset := t0.Add(window)
+	snaps := []Snapshot{
+		{Time: at(299), Pct: 40, ResetAt: reset},
+		{Time: at(301), Pct: 1, ResetAt: reset.Add(window)},
+	}
+	events := []Event{
+		{Session: "long", Time: at(100), Cost: 1},
+		{Session: "long", Time: at(300), Cost: 1},
+		{Session: "long", Time: at(300).Add(30 * time.Second), Cost: 1},
+	}
+	res := Attribute(snaps, events, window, t0.Add(-time.Hour))
+	times := []time.Time{at(100), at(300), at(300).Add(30 * time.Second)}
+	if got, ok := res.Share("long", times); !ok || !approx(got, 41) {
+		t.Errorf("Share(long) = %v, %v, want 41, true", got, ok)
 	}
 }

@@ -186,10 +186,6 @@ func main() {
 		go pollUsage(ctx, apiClient, provider, st, srv.Broker, srv.Handlers, fcSvc, fcReady, time.Duration(cfg.PollIntervalSecs)*time.Second)
 	}
 
-	// Warm the cost-event cache in the background so the first sessions
-	// request doesn't parse every recent session file for limit shares.
-	go parser.CostEventsSince(cfg.ClaudeDir, time.Now().AddDate(0, 0, -15))
-
 	// Start file watcher
 	w, err := watcher.New(cfg.ClaudeDir)
 	if err != nil {
@@ -201,7 +197,6 @@ func main() {
 			sessions, err := parser.DiscoverTodaySessions(cfg.ClaudeDir)
 			if err == nil {
 				parser.EnrichSessionsWithProcessStatus(sessions, cfg.ClaudeDir, stuckThreshold)
-				srv.Handlers.AttachLimitShares(sessions)
 				srv.Broker.SendJSON("sessions", sessions)
 			}
 			// Update daily aggregate

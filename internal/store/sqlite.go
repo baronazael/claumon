@@ -187,18 +187,19 @@ type GaugeSnapshot struct {
 	ResetAt string // canonical reset_at, empty when no window was active
 }
 
-// GetGaugeSnapshots returns all snapshots of the given gauge ("session" or
-// "weekly") since `since`, in ascending time order.
-func (s *Store) GetGaugeSnapshots(gauge string, since time.Time) ([]GaugeSnapshot, error) {
+// GetGaugeSnapshots returns the snapshots of the given gauge ("session" or
+// "weekly") taken in [since, until], in ascending time order.
+func (s *Store) GetGaugeSnapshots(gauge string, since, until time.Time) ([]GaugeSnapshot, error) {
 	pctCol, resetCol, err := gaugeColumns(gauge)
 	if err != nil {
 		return nil, err
 	}
 
 	q := fmt.Sprintf(`SELECT timestamp, COALESCE(%s, 0), COALESCE(%s, '') FROM usage_snapshots
-		WHERE timestamp >= ?
+		WHERE timestamp >= ? AND timestamp <= ?
 		ORDER BY timestamp ASC`, pctCol, resetCol)
-	rows, err := s.db.Query(q, since.UTC().Format("2006-01-02 15:04:05"))
+	const layout = "2006-01-02 15:04:05"
+	rows, err := s.db.Query(q, since.UTC().Format(layout), until.UTC().Format(layout))
 	if err != nil {
 		return nil, fmt.Errorf("query gauge snapshots: %w", err)
 	}

@@ -28,15 +28,54 @@ type Event struct {
 	Cost    float64
 }
 
+// Interval is the time span (From, To].
+type Interval struct {
+	From, To time.Time
+}
+
+func (iv Interval) contains(t time.Time) bool {
+	return t.After(iv.From) && !t.After(iv.To)
+}
+
 // Result holds the estimated percentage points of the gauge used by each
 // session.
 type Result struct {
 	BySession map[string]float64
 	// Unattributed is usage that rose while no local session was active.
 	Unattributed float64
-	// From is the earliest time attribution is reliable from. Sessions with
-	// no activity after it have no estimate. Zero if nothing was attributed.
-	From time.Time
+	// Covered lists the spans in which every gauge increase was split across
+	// the events behind it. Events outside them and before Through fell in a
+	// gap (a window claumon never polled, or usage older than the loaded
+	// events), so their share is unknown.
+	Covered []Interval
+	// Through is the time of the last snapshot. Events after it are not
+	// reflected in the gauge yet.
+	Through time.Time
+}
+
+// Share returns the estimated share of the session whose events happened at
+// times. ok is false when any of them fell in a gap, or when none of them is
+// reflected in the gauge yet: a partial sum would read as a measurement.
+func (r Result) Share(session string, times []time.Time) (pct float64, ok bool) {
+	counted := 0
+	for _, t := range times {
+		if t.After(r.Through) {
+			continue
+		}
+		if !r.covers(t) {
+			return 0, false
+		}
+		counted++
+	}
+	if counted == 0 {
+		return 0, false
+	}
+	return r.BySession[session], true
+}
+
+func (r Result) covers(t time.Time) bool {
+	i := sort.Search(len(r.Covered), func(i int) bool { return !r.Covered[i].To.Before(t) })
+	return i < len(r.Covered) && r.Covered[i].contains(t)
 }
 
 const (
@@ -46,6 +85,11 @@ const (
 	// windowStartSlack widens a window's derived start, since reset_at is
 	// rounded to the minute.
 	windowStartSlack = time.Minute
+	// maxPollGap is the longest stretch without a snapshot that still counts
+	// as covered across a window change. Usage in the unpolled tail of a
+	// window is lost, which is negligible for a regular poll interval but not
+	// for a missed window.
+	maxPollGap = 15 * time.Minute
 )
 
 // Attribute splits the gauge increases in snaps across events. window is the
@@ -88,8 +132,15 @@ func Attribute(snaps []Snapshot, events []Event, window time.Duration, eventsFro
 	begin := func(t time.Time) {
 		segStart = t
 		known = true
-		if res.From.IsZero() {
-			res.From = t
+		if n := len(res.Covered); n > 0 && t.Sub(res.Covered[n-1].To) <= maxPollGap {
+			return
+		}
+		res.Covered = append(res.Covered, Interval{From: t, To: t})
+	}
+	// extend marks everything up to t as covered.
+	extend := func(t time.Time) {
+		if known {
+			res.Covered[len(res.Covered)-1].To = t
 		}
 	}
 
@@ -101,6 +152,7 @@ func Attribute(snaps []Snapshot, events []Event, window time.Duration, eventsFro
 				distribute(first.Pct, segStart, first.Time)
 				segStart = first.Time
 			}
+			extend(first.Time)
 		}
 	}
 
@@ -110,6 +162,9 @@ func Attribute(snaps []Snapshot, events []Event, window time.Duration, eventsFro
 		if cur.ResetAt.IsZero() {
 			// No active window: anything pending was already counted or lost
 			// to rounding. The next window starts fresh.
+			if cur.Time.Sub(prev.Time) <= maxPollGap {
+				extend(cur.Time)
+			}
 			known = false
 			continue
 		}
@@ -124,22 +179,24 @@ func Attribute(snaps []Snapshot, events []Event, window time.Duration, eventsFro
 				distribute(cur.Pct, segStart, cur.Time)
 				segStart = cur.Time
 			}
+			extend(cur.Time)
 			continue
 		}
 
 		delta := cur.Pct - prev.Pct
-		if delta <= 0 {
-			continue
-		}
-		if !known {
+		if delta > 0 && !known {
 			// The usage behind this increase may predate the loaded events.
 			begin(cur.Time)
 			continue
 		}
-		distribute(delta, segStart, cur.Time)
-		segStart = cur.Time
+		if delta > 0 {
+			distribute(delta, segStart, cur.Time)
+			segStart = cur.Time
+		}
+		extend(cur.Time)
 	}
 
+	res.Through = snaps[len(snaps)-1].Time
 	return res
 }
 

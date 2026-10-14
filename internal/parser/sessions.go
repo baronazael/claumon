@@ -47,10 +47,6 @@ type SessionSummary struct {
 	IsStuck         bool      `json:"is_stuck"`
 	PID             int       `json:"pid,omitempty"`
 	IdleMinutes     float64   `json:"idle_minutes,omitempty"`
-	// Estimated percentage points of the 5-hour session limit and the weekly
-	// limit this session used. Nil when no usage snapshots cover the session.
-	SessionLimitPct *float64 `json:"session_limit_pct,omitempty"`
-	WeeklyLimitPct  *float64 `json:"weekly_limit_pct,omitempty"`
 }
 
 // SessionMessage represents a single parsed message from a session for the detail view.

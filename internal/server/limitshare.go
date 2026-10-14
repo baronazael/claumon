@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"math"
+	"net/http"
 	"time"
 
 	"github.com/fabioconcina/claumon/internal/limitshare"
@@ -14,51 +15,76 @@ const (
 	weeklyWindow  = 7 * 24 * time.Hour
 )
 
-// AttachLimitShares sets each session's estimated share of the 5-hour and
-// weekly limits from stored usage snapshots. Sessions with no snapshot
-// coverage are left without an estimate.
-func (h *Handlers) AttachLimitShares(sessions []*parser.SessionSummary) {
-	if h.store == nil || len(sessions) == 0 {
+// LimitShare is a session's estimated share of the 5-hour and weekly limits,
+// in percentage points. A nil field means there is no estimate.
+type LimitShare struct {
+	SessionPct *float64 `json:"session_pct"`
+	WeeklyPct  *float64 `json:"weekly_pct"`
+}
+
+// HandleSessionLimitShare estimates how much of each limit one session used.
+// It runs on demand, when the session detail panel opens, because it reads
+// every session file active around the session.
+func (h *Handlers) HandleSessionLimitShare(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	path := parser.FindSessionFile(h.claudeDir, id)
+	if path == "" {
+		writeJSONError(w, "session not found", http.StatusNotFound)
 		return
 	}
+	own, err := parser.SessionCostEvents(path)
+	if err != nil {
+		writeJSONError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, h.limitShare(id, own))
+}
 
-	var earliest time.Time
-	for _, s := range sessions {
-		if !s.StartTime.IsZero() && (earliest.IsZero() || s.StartTime.Before(earliest)) {
-			earliest = s.StartTime
+func (h *Handlers) limitShare(id string, own []parser.CostEvent) LimitShare {
+	var out LimitShare
+	if h.store == nil || len(own) == 0 {
+		return out
+	}
+
+	times := make([]time.Time, len(own))
+	first, last := own[0].Time, own[0].Time
+	for i, e := range own {
+		times[i] = e.Time
+		if e.Time.Before(first) {
+			first = e.Time
+		}
+		if e.Time.After(last) {
+			last = e.Time
 		}
 	}
-	if earliest.IsZero() {
-		return
-	}
-	// Load snapshots back to the start of the weekly window the earliest
-	// session ran in, and events back far enough that a window open at the
-	// first snapshot can be attributed from its start.
-	snapSince := earliest.Add(-weeklyWindow)
-	eventsFrom := snapSince.Add(-weeklyWindow)
 
-	byID, err := parser.CostEventsSince(h.claudeDir, eventsFrom)
+	// A window the session ran in opened at most one window before its first
+	// message, and its last message shows up in the gauge before that
+	// window ends. A window open at the first snapshot loaded can itself
+	// have opened a full window earlier, so events go back one more.
+	eventsFrom := first.Add(-2 * weeklyWindow)
+	byID, err := parser.CostEventsBetween(h.claudeDir, eventsFrom, last.Add(weeklyWindow))
 	if err != nil {
 		log.Printf("[limitshare] Loading cost events: %v", err)
-		return
+		return out
 	}
 	var events []limitshare.Event
-	for id, evs := range byID {
+	for sid, evs := range byID {
 		for _, e := range evs {
-			events = append(events, limitshare.Event{Session: id, Time: e.Time, Cost: e.CostUSD})
+			events = append(events, limitshare.Event{Session: sid, Time: e.Time, Cost: e.CostUSD})
 		}
 	}
 
 	gauges := []struct {
 		name   string
 		window time.Duration
-		set    func(s *parser.SessionSummary, v *float64)
+		dst    **float64
 	}{
-		{"session", sessionWindow, func(s *parser.SessionSummary, v *float64) { s.SessionLimitPct = v }},
-		{"weekly", weeklyWindow, func(s *parser.SessionSummary, v *float64) { s.WeeklyLimitPct = v }},
+		{"session", sessionWindow, &out.SessionPct},
+		{"weekly", weeklyWindow, &out.WeeklyPct},
 	}
 	for _, g := range gauges {
-		stored, err := h.store.GetGaugeSnapshots(g.name, snapSince)
+		stored, err := h.store.GetGaugeSnapshots(g.name, first.Add(-g.window), last.Add(g.window))
 		if err != nil {
 			log.Printf("[limitshare] Loading %s snapshots: %v", g.name, err)
 			continue
@@ -74,15 +100,10 @@ func (h *Handlers) AttachLimitShares(sessions []*parser.SessionSummary) {
 		}
 
 		res := limitshare.Attribute(snaps, events, g.window, eventsFrom)
-		if res.From.IsZero() {
-			continue
-		}
-		for _, s := range sessions {
-			if s.LastActivity.Before(res.From) {
-				continue
-			}
-			v := math.Round(res.BySession[s.ID]*100) / 100
-			g.set(s, &v)
+		if pct, ok := res.Share(id, times); ok {
+			v := math.Round(pct*100) / 100
+			*g.dst = &v
 		}
 	}
+	return out
 }

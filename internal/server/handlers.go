@@ -205,7 +205,6 @@ func (h *Handlers) HandleSessions(w http.ResponseWriter, r *http.Request) {
 		sessions = []*parser.SessionSummary{}
 	}
 	parser.EnrichSessionsWithProcessStatus(sessions, h.claudeDir, h.StuckThreshold)
-	h.AttachLimitShares(sessions)
 	writeJSON(w, sessions)
 }
 

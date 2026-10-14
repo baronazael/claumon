@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +14,7 @@ import (
 	"github.com/fabioconcina/claumon/internal/pricing"
 )
 
-func TestAttachLimitShares(t *testing.T) {
+func TestSessionLimitShare(t *testing.T) {
 	parser.SetPricingTable(pricing.Load(nil))
 	srv, st := setupTestServer(t)
 	claudeDir := srv.Handlers.claudeDir
@@ -42,32 +44,62 @@ func TestAttachLimitShares(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessions, err := parser.DiscoverSessions(claudeDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv.Handlers.AttachLimitShares(sessions)
-
 	want := map[string][2]float64{"big": {6, 1.5}, "small": {2, 0.5}}
-	for _, s := range sessions {
-		w, ok := want[s.ID]
-		if !ok {
-			continue
+	for id, w := range want {
+		got := getLimitShare(t, srv, id)
+		if got.SessionPct == nil || *got.SessionPct != w[0] {
+			t.Errorf("%s SessionPct = %v, want %v", id, got.SessionPct, w[0])
 		}
-		if s.SessionLimitPct == nil || *s.SessionLimitPct != w[0] {
-			t.Errorf("%s SessionLimitPct = %v, want %v", s.ID, s.SessionLimitPct, w[0])
+		if got.WeeklyPct == nil || *got.WeeklyPct != w[1] {
+			t.Errorf("%s WeeklyPct = %v, want %v", id, got.WeeklyPct, w[1])
 		}
-		if s.WeeklyLimitPct == nil || *s.WeeklyLimitPct != w[1] {
-			t.Errorf("%s WeeklyLimitPct = %v, want %v", s.ID, s.WeeklyLimitPct, w[1])
-		}
+	}
+
+	// "late" only ran after the last poll: no estimate yet, not 0%.
+	write("late", line("m3", now.Add(time.Minute), 1000))
+	if got := getLimitShare(t, srv, "late"); got.SessionPct != nil || got.WeeklyPct != nil {
+		t.Errorf("late = %v / %v, want no estimate", got.SessionPct, got.WeeklyPct)
 	}
 }
 
-func TestAttachLimitSharesWithoutSnapshots(t *testing.T) {
+func TestSessionLimitShareWithoutSnapshots(t *testing.T) {
 	srv, _ := setupTestServer(t)
-	s := &parser.SessionSummary{ID: "x", StartTime: time.Now(), LastActivity: time.Now()}
-	srv.Handlers.AttachLimitShares([]*parser.SessionSummary{s})
-	if s.SessionLimitPct != nil || s.WeeklyLimitPct != nil {
-		t.Errorf("expected no estimate without snapshots, got %v / %v", s.SessionLimitPct, s.WeeklyLimitPct)
+	proj := filepath.Join(srv.Handlers.claudeDir, "projects", "-tmp-proj")
+	if err := os.MkdirAll(proj, 0755); err != nil {
+		t.Fatal(err)
 	}
+	content := fmt.Sprintf(`{"type":"assistant","timestamp":%q,"message":{"id":"m1","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":1}}}`+"\n",
+		time.Now().Add(-time.Hour).UTC().Format(time.RFC3339))
+	if err := os.WriteFile(filepath.Join(proj, "x.jsonl"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := getLimitShare(t, srv, "x")
+	if got.SessionPct != nil || got.WeeklyPct != nil {
+		t.Errorf("expected no estimate without snapshots, got %v / %v", got.SessionPct, got.WeeklyPct)
+	}
+}
+
+func TestSessionLimitShareNotFound(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	req := httptest.NewRequest("GET", "/api/sessions/nope/limit-share", nil)
+	w := httptest.NewRecorder()
+	srv.Mux.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+}
+
+func getLimitShare(t *testing.T, srv *Server, id string) LimitShare {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/api/sessions/"+id+"/limit-share", nil)
+	w := httptest.NewRecorder()
+	srv.Mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("%s: status = %d, body %s", id, w.Code, w.Body.String())
+	}
+	var got LimitShare
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	return got
 }
